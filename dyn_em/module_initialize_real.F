@@ -69,6 +69,8 @@ CONTAINS
    )
 
       USE module_optional_input
+      use module_madwrf, only : Init_madwrf_tracers
+
       IMPLICIT NONE
 
       !  Input space and data.  No gridded meteorological data has been stored, though.
@@ -4435,6 +4437,11 @@ endif
          enddo
 
       ENDIF
+
+      if ( config_flags%madwrf_opt == 2) then
+            call Init_madwrf_tracers (tracer, moist, p_qc, p_qi, p_qs, p_tr_qc, p_tr_qi, p_tr_qs, &
+                ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte)
+      end if
 
 !+---+-----------------------------------------------------------------+
       !  Added by Greg Thompson.  Pre-set snow depth by latitude, elevation, and day-of-year.
