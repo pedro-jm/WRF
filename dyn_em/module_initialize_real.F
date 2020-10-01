@@ -69,7 +69,7 @@ CONTAINS
    )
 
       USE module_optional_input
-      use module_madwrf, only : Init_madwrf_tracers
+      use module_madwrf, only : Init_madwrf_clouds, Init_madwrf_tracers
 
       IMPLICIT NONE
 
@@ -4437,6 +4437,12 @@ endif
          enddo
 
       ENDIF
+
+      if (config_flags%madwrf_cldinit == 1)  &
+          call Init_madwrf_clouds (moist, p_qv, p_qc, p_qi, p_qs, p00, grid%t_2, grid%p_hyd, grid%ph_2, grid%phb, &
+            grid%alt, grid%xland, grid%dx, grid%dy, flag_cldmask, flag_cldtopz, flag_cldbasez, flag_brtemp, &
+            em_width, hold_ups, ids, ide, jds, jde, its, ims, ime, jms, jme, kms, kme, ite, jts, jte, kts, kte, &
+            grid%cldfra)
 
         ! MAD-WRF tracers initialization
       if (config_flags%madwrf_opt == 2) then
