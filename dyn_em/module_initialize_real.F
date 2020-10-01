@@ -4438,9 +4438,14 @@ endif
 
       ENDIF
 
-      if ( config_flags%madwrf_opt == 2) then
+        ! MAD-WRF tracers initialization
+      if (config_flags%madwrf_opt == 2) then
+        if (f_qc .and. f_qi .and. f_qs) then
             call Init_madwrf_tracers (tracer, moist, p_qc, p_qi, p_qs, p_tr_qc, p_tr_qi, p_tr_qs, &
                 ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte)
+        else
+            CALL wrf_error_fatal('madwrf_opt=2 requires a mp_physics option with qc, qi and qs')
+        end if
       end if
 
 !+---+-----------------------------------------------------------------+
