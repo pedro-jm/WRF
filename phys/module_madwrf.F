@@ -18,9 +18,56 @@
 
   contains
 
+    function Calc_cldtopz_from_brtemp (cldmask, ts, dzs, brtemp, tropoz, ht, kts, kte) result (return_value)
+
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    !                                                                                         !
+    ! Purpose: Calculate cloud top height from brigtness temperature                          !
+    !                                                                                         !
+    ! Authors: Pedro A. Jimenez version of Greg Thompson code                                 !
+    !                                                                                         !
+    ! Comments: Staring at model top, go downwards first to the level of the tropopause,      !
+    !           then keep going until the model temperature is greater (warmer) than the      !
+    !           incoming GOES satellite longwave IR tempeature (channel13 on GOES-R series).  !
+    !           As version1.0, this will be the highest altitude of potential cloud based on  !
+    !           IR temperature whereas an improvement is possible for inversions in which the !
+    !           cloud top could be lower altitude that might be detected using the RH field.  !
+    !                                                                                         !
+    !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    
+      implicit none
+
+      real :: return_value
+
+      real, intent (in) :: cldmask, brtemp, tropoz, ht
+      integer, intent (in) :: kts, kte
+      real, dimension (kts:kte), intent (in) :: ts, dzs
+
+      real, parameter :: MISSING_CLDTOPZ = -999.9
+      real :: this_height
+      integer :: k
+
+
+      return_value = MISSING_CLDTOPZ
+      if (cldmask > 0.0) then
+        this_height = sum (dzs(kts:kte-1)) + ht
+        do k = kte - 2, kts, -1
+           this_height = this_height - dzs(k + 1)
+           if (this_height > tropoz) cycle
+           if (ts(k) > brtemp) then
+             return_value = this_height + dzs(k) * (brtemp - ts(k)) / (ts(k + 1) - ts(k))
+             if ((return_value < this_height) .or. (return_value > this_height + dzs(k))) &
+                 return_value = tropoz
+             exit
+           end if
+        end do
+      end if
+
+    end function Calc_cldtopz_from_brtemp
+
     subroutine Init_madwrf_clouds (moist, p_qv, p_qc, p_qi, p_qs, p00, t, p, ph_2, phb, alt, xland, cldmask, cldtopz, cldbasez, &
-         ht,  dx, dy, flag_cldmask, flag_cldtopz, flag_cldbasez, flag_brtemp, em_width, hold_ups, ids, ide, jds, jde, its, ims, &
-         ime, jms, jme, kms, kme, ite, jts, jte, kts, kte, cldfra)
+         brtemp, ht,  dx, dy, flag_cldmask, flag_cldtopz, flag_cldbasez, flag_brtemp, em_width, hold_ups, ids, ide, jds, jde,   &
+         its, ims, ime, jms, jme, kms, kme, ite, jts, jte, kts, kte, cldfra)
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !                                          !
@@ -35,17 +82,17 @@
         ! t, p, ph_2, phb, alt, xland
       real, dimension (ims:ime, kms:kme, jms:jme, *), intent (inout) :: moist
       real, dimension (ims:ime, kms:kme, jms:jme), intent (in) :: t, p, ph_2, phb, alt
-      real, dimension (ims:ime, jms:jme), intent (in) :: xland, cldmask, cldtopz, cldbasez, ht
+      real, dimension (ims:ime, jms:jme), intent (in) :: xland, cldmask, cldtopz, cldbasez, brtemp, ht
       logical, intent (in) :: hold_ups
       integer, intent (in) :: p_qv, p_qc, p_qi, p_qs, flag_cldmask, flag_cldtopz, flag_cldbasez, flag_brtemp, em_width, &
           ids, ide, jds, jde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte
       real, intent (in) :: p00, dx, dy
       real, dimension (ims:ime, kms:kme, jms:jme), intent (out) :: cldfra
 
-      real, parameter :: M_TO_KM = 0.001, MISSING_CLDTOPZ = -999.9
+      real, parameter :: CONVERT_M_TO_KM = 0.001, MISSING_CLDTOPZ = -999.9
       real, dimension (kts:kte - 1) :: dzs, ts
-      real :: gridkm, tropo_z, cldtopz_agl
-      integer :: i, j, k, insert_clouds
+      real :: gridkm, tropoz, cldtopz_agl
+      integer :: i, j, k, insert_clouds, k_tropo
       logical, parameter :: LOCAL_DEBUG = .false.
 
 
@@ -57,8 +104,7 @@
       print *, 'insert_clouds = ', insert_clouds
 
 
-      gridkm = sqrt (dx * dy) * M_TO_KM
-      tropo_z = 0.0
+      gridkm = sqrt (dx * dy) * CONVERT_M_TO_KM
 
       Loop_j: do j = jts, min (jte, jde - 1)
         Loop_i: do i = its, min (ite, ide - 1)
@@ -66,35 +112,40 @@
 
           if (LOCAL_DEBUG) print *, 'Calculations for i, j = ', i, j
 
-            ! Cacl cloud top height agl if necessary
-          if (insert_clouds > 0) then
-            cldtopz_agl = MISSING_CLDTOPZ
-            if (flag_cldtopz == 1) then
-              if (cldtopz(i, j) > 0.0) cldtopz_agl = max (0.0, cldtopz(i, j) -  ht(i, j))
-            else ! flag_brtemp must be 1
-                ! cldtopz_agl = Calc_cldtopz_from_bt (brtemp)
-            end if
-          end if
-
           Loop_k: do k = kts, kte - 1
-              ! Convert pert theta to T
+              ! Convert theta pert to T
             ts(k) = (t(i, k, j) + T0) / ((p00 / p(i, k, j)) ** RCP) 
               ! Calc layer thickness
             dzs(k) = (ph_2(i, k + 1, j) + phb(i, k + 1, j) - (ph_2(i, k, j) + phb(i, k, j))) / G
           end do Loop_k
+
+            ! Calc troposphere height
+          call Calc_tropo_height (ts, p(i, :, j), dzs, kts, kte, LOCAL_DEBUG, k_tropo, tropoz)
+          tropoz = tropoz + ht(i, j)
+
+            ! Calc cloud top height agl if necessary
+          if (insert_clouds > 0) then
+            cldtopz_agl = MISSING_CLDTOPZ
+            if (flag_cldtopz == 1) then
+              if (cldtopz(i, j) > 0.0) cldtopz_agl = max (0.0, cldtopz(i, j) -  ht(i, j))
+            else
+              cldtopz_agl = Calc_cldtopz_from_brtemp (cldmask(i, j), ts, dzs, brtemp(i, j), tropoz, ht(i, j), kts, kte)
+              if (cldtopz_agl > 0.0) cldtopz_agl = max (0.0, cldtopz(i, j) -  ht(i, j))
+            end if
+          end if
 
           select_cld_impro: select case (insert_clouds)
             case (0)
                 ! Use the analysis field
               call cal_cldfra3 (cldfra(i, :, j), moist(i, :, j, p_qv), moist(i, :, j, p_qc), &
                   moist(i, :, j, p_qi), moist(i, :, j, p_qs), dzs, p(i, :, j), ts(:),   &
-                  xland(i, j), gridkm, .true., 1.5, tropo_z, kts, kte, .false.)
+                  xland(i, j), gridkm, .true., 1.5, tropoz, kts, kte, .false.)
 
             case (1)
                 ! Remove clouds if clear (cldmask = 0)
               call cal_cldfra3 (cldfra(i, :, j), moist(i, :, j, p_qv), moist(i, :, j, p_qc), &
                   moist(i, :, j, p_qi), moist(i, :, j, p_qs), dzs, p(i, :, j), ts(:),   &
-                  xland(i, j), gridkm, .true., 1.5, tropo_z, kts, kte, .false., &
+                  xland(i, j), gridkm, .true., 1.5, tropoz, kts, kte, .false., &
                   cldmask = cldmask(i, j))
 
             case (2)
@@ -103,7 +154,7 @@
                 ! Add clouds over clear sky regions (cldmask = 1)
               call cal_cldfra3 (cldfra(i, :, j), moist(i, :, j, p_qv), moist(i, :, j, p_qc), &
                   moist(i, :, j, p_qi), moist(i, :, j, p_qs), dzs, p(i, :, j), ts(:),   &
-                  xland(i, j), gridkm, .true., 1.5, tropo_z, kts, kte, .false., &
+                  xland(i, j), gridkm, .true., 1.5, tropoz, kts, kte, .false., &
                   cldmask = cldmask(i, j), cldtopz = cldtopz_agl)
 
             case (3)
@@ -111,7 +162,7 @@
                 ! Reduce / extend cloud top / base heights to match observations
               call cal_cldfra3 (cldfra(i, :, j), moist(i, :, j, p_qv), moist(i, :, j, p_qc), &
                   moist(i, :, j, p_qi), moist(i, :, j, p_qs), dzs, p(i, :, j), ts(:),   &
-                  xland(i, j), gridkm, .true., 1.5, tropo_z, kts, kte, .false.,  &
+                  xland(i, j), gridkm, .true., 1.5, tropoz, kts, kte, .false.,  &
                   cldmask = cldmask(i, j), cldtopz = cldtopz_agl, cldbasez = cldbasez(i, j))
 
           end select select_cld_impro
