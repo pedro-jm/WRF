@@ -4439,18 +4439,18 @@ endif
       ENDIF
 
       if (config_flags%madwrf_cldinit == 1)  &
-          call Init_madwrf_clouds (moist, p_qv, p_qc, p_qi, p_qs, p00, grid%t_2, grid%p_hyd, grid%ph_2, grid%phb, &
-            grid%alt, grid%xland, grid%dx, grid%dy, flag_cldmask, flag_cldtopz, flag_cldbasez, flag_brtemp, &
-            em_width, hold_ups, ids, ide, jds, jde, its, ims, ime, jms, jme, kms, kme, ite, jts, jte, kts, kte, &
-            grid%cldfra)
+          call Init_madwrf_clouds (moist, p_qv, p_qc, p_qi, p_qs, p00, grid%t_2, grid%p_hyd, grid%ph_2, grid%phb,      &
+            grid%alt, grid%xland, grid%cldmask, grid%cldtopz, grid%cldbasez, grid%ht, grid%dx, grid%dy, flag_cldmask,  &
+            flag_cldtopz, flag_cldbasez, flag_brtemp, em_width, hold_ups, ids, ide, jds, jde, its, ims, ime, jms, jme, &
+            kms, kme, ite, jts, jte, kts, kte, grid%cldfra)
 
         ! MAD-WRF tracers initialization
       if (config_flags%madwrf_opt == 2) then
         if (f_qc .and. f_qi .and. f_qs) then
-            call Init_madwrf_tracers (tracer, moist, p_qc, p_qi, p_qs, p_tr_qc, p_tr_qi, p_tr_qs, &
-                ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte)
+          call Init_madwrf_tracers (tracer, moist, p_qc, p_qi, p_qs, p_tr_qc, p_tr_qi, p_tr_qs, &
+              ids, ide, jds, jde, kds, kde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte)
         else
-            CALL wrf_error_fatal('madwrf_opt=2 requires a mp_physics option with qc, qi and qs')
+          call wrf_error_fatal('madwrf_opt=2 requires a mp_physics option with qc, qi and qs')
         end if
       end if
 

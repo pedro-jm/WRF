@@ -18,8 +18,9 @@
 
   contains
 
-    subroutine Init_madwrf_clouds (moist, p_qv, p_qc, p_qi, p_qs, p00, t, p, ph_2, phb, alt, xland, dx, dy, flag_cldmask, flag_cldtopz, &
-        flag_cldbasez, flag_brtemp, em_width, hold_ups, ids, ide, jds, jde, its, ims, ime, jms, jme, kms, kme, ite, jts, jte, kts, kte, cldfra)
+    subroutine Init_madwrf_clouds (moist, p_qv, p_qc, p_qi, p_qs, p00, t, p, ph_2, phb, alt, xland, cldmask, cldtopz, cldbasez, &
+         ht,  dx, dy, flag_cldmask, flag_cldtopz, flag_cldbasez, flag_brtemp, em_width, hold_ups, ids, ide, jds, jde, its, ims, &
+         ime, jms, jme, kms, kme, ite, jts, jte, kts, kte, cldfra)
 
     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     !                                          !
@@ -34,34 +35,46 @@
         ! t, p, ph_2, phb, alt, xland
       real, dimension (ims:ime, kms:kme, jms:jme, *), intent (inout) :: moist
       real, dimension (ims:ime, kms:kme, jms:jme), intent (in) :: t, p, ph_2, phb, alt
-      real, dimension (ims:ime, jms:jme), intent (in) :: xland
+      real, dimension (ims:ime, jms:jme), intent (in) :: xland, cldmask, cldtopz, cldbasez, ht
       logical, intent (in) :: hold_ups
       integer, intent (in) :: p_qv, p_qc, p_qi, p_qs, flag_cldmask, flag_cldtopz, flag_cldbasez, flag_brtemp, em_width, &
           ids, ide, jds, jde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte
       real, intent (in) :: p00, dx, dy
       real, dimension (ims:ime, kms:kme, jms:jme), intent (out) :: cldfra
 
-      real, parameter :: M_TO_KM = 0.001
+      real, parameter :: M_TO_KM = 0.001, MISSING_CLDTOPZ = -999.9
       real, dimension (kts:kte - 1) :: dzs, ts
-      real :: gridkm, tropo_z
-      integer :: i, j, k
+      real :: gridkm, tropo_z, cldtopz_agl
+      integer :: i, j, k, insert_clouds
       logical, parameter :: LOCAL_DEBUG = .false.
 
 
-      print *, 'flag_cldmask = ', flag_cldmask
-      print *, 'flag_cldtopz = ', flag_cldtopz
-      print *, 'flag_cldbasez = ', flag_cldbasez
-      print *, 'flag_brtemp = ', flag_brtemp
+        ! Identify the cloud initialization method
+      insert_clouds = 0
+      if (flag_cldmask == 1 .and. flag_cldtopz == 0 .and. flag_brtemp == 0) insert_clouds = 1
+      if (flag_cldmask == 1 .and. (flag_cldtopz == 1 .or. flag_brtemp == 1)) insert_clouds = 2
+      if (insert_clouds == 2 .and. flag_cldbasez == 1) insert_clouds = 3
+      print *, 'insert_clouds = ', insert_clouds
+
 
       gridkm = sqrt (dx * dy) * M_TO_KM
       tropo_z = 0.0
 
       Loop_j: do j = jts, min (jte, jde - 1)
         Loop_i: do i = its, min (ite, ide - 1)
-
-          if (LOCAL_DEBUG) print *, 'i, j = ', i, j
-
           if (Skip_middle_points_t (ids, ide, jds, jde, i, j, em_width, hold_ups)) cycle
+
+          if (LOCAL_DEBUG) print *, 'Calculations for i, j = ', i, j
+
+            ! Cacl cloud top height agl if necessary
+          if (insert_clouds > 0) then
+            cldtopz_agl = MISSING_CLDTOPZ
+            if (flag_cldtopz == 1) then
+              if (cldtopz(i, j) > 0.0) cldtopz_agl = max (0.0, cldtopz(i, j) -  ht(i, j))
+            else ! flag_brtemp must be 1
+                ! cldtopz_agl = Calc_cldtopz_from_bt (brtemp)
+            end if
+          end if
 
           Loop_k: do k = kts, kte - 1
               ! Convert pert theta to T
@@ -70,51 +83,39 @@
             dzs(k) = (ph_2(i, k + 1, j) + phb(i, k + 1, j) - (ph_2(i, k, j) + phb(i, k, j))) / G
           end do Loop_k
 
-      call cal_cldfra3 (cldfra(i, :, j), moist(i, :, j, p_qv), moist(i, :, j, p_qc), &
-          moist(i, :, j, p_qi), moist(i, :, j, p_qs), dzs, p(i, :, j), ts(:),   &
-          xland(i, j), gridkm, .true., 1.5, tropo_z, kts, kte, .false.)
+          select_cld_impro: select case (insert_clouds)
+            case (0)
+                ! Use the analysis field
+              call cal_cldfra3 (cldfra(i, :, j), moist(i, :, j, p_qv), moist(i, :, j, p_qc), &
+                  moist(i, :, j, p_qi), moist(i, :, j, p_qs), dzs, p(i, :, j), ts(:),   &
+                  xland(i, j), gridkm, .true., 1.5, tropo_z, kts, kte, .false.)
 
+            case (1)
+                ! Remove clouds if clear (cldmask = 0)
+              call cal_cldfra3 (cldfra(i, :, j), moist(i, :, j, p_qv), moist(i, :, j, p_qc), &
+                  moist(i, :, j, p_qi), moist(i, :, j, p_qs), dzs, p(i, :, j), ts(:),   &
+                  xland(i, j), gridkm, .true., 1.5, tropo_z, kts, kte, .false., &
+                  cldmask = cldmask(i, j))
 
-!!              call cal_cldfra3(temp_CF,temp_Qv,temp_Qc,temp_Qi,temp_Qs,   &
-!!     &                temp_Dz, temp_P, temp_T, temp_xland, gridkm,      &
-!!     &                config_flags%insert_init_cloud, max_relh,         &
-!!     &                tropo_z, kts, kte-1, debug_flag, k_tropo = k_tropo)
-!
-!          DO k = kts,kte
-!            qc(i,k,j) = qc1d(k)
-!            qi(i,k,j) = qi1d(k)
-!            qs(i,k,j) = qs1d(k)
-!            cldfra(i,k,j) = cf1d(k)
-!          end do
-!            do k = kts, kte-1
-!               rc_eff(k) = 2.5E-6
-!               ri_eff(k) = 2.5E-6
-!               rs_eff(k) = 2.5E-6
-!               temp_Qc(k) = temp_Qc(k)*temp_R(k)
-!               temp_Qi(k) = temp_Qi(k)*temp_R(k)
-!               temp_Qs(k) = temp_Qs(k)*temp_R(k)
-!               temp_Qr(k) = temp_Qr(k)*temp_R(k)
-!               temp_Nc(k) = temp_Nc(k)*temp_R(k)
-!               temp_Ni(k) = temp_Ni(k)*temp_R(k)
-!               temp_Nr(k) = temp_Nr(k)*temp_R(k)
-!               if (temp_Qc(k).gt.0.0 .AND. temp_Nc(k).le.0.0) then
-!                  if (P_QNWFA .gt. 1) then
-!                     temp_Nc(k) = make_DropletNumber (temp_Qc(k),       &
-!     &                           scalar(i,k,j,P_QNWFA), temp_xland)
-!                  else
-!                     temp_Nc(k) = make_DropletNumber (temp_Qc(k),       &
-!     &                           0.0, temp_xland)
-!                  endif
-!               endif
-!               if (temp_Qi(k).gt.0.0 .AND. temp_Ni(k).le.0.0) then
-!                  temp_Ni(k) = make_IceNumber (temp_Qi(k), temp_T(k))
-!               endif
-!               if (temp_Qr(k).gt.0.0 .AND. temp_Nr(k).le.0.0) then
-!                  temp_Nr(k) = make_RainNumber (temp_Qr(k), temp_T(k))
-!                  scalar(i,k,j,P_QNR) = temp_Nr(k) / temp_R(k)
-!               endif
-!            enddo
-!
+            case (2)
+                ! Remove clouds if clear (cldmask = 0)
+                ! Reduce / extend cloud top heights to match observations
+                ! Add clouds over clear sky regions (cldmask = 1)
+              call cal_cldfra3 (cldfra(i, :, j), moist(i, :, j, p_qv), moist(i, :, j, p_qc), &
+                  moist(i, :, j, p_qi), moist(i, :, j, p_qs), dzs, p(i, :, j), ts(:),   &
+                  xland(i, j), gridkm, .true., 1.5, tropo_z, kts, kte, .false., &
+                  cldmask = cldmask(i, j), cldtopz = cldtopz_agl)
+
+            case (3)
+                ! Remove clouds if clear (cldmask = 0)
+                ! Reduce / extend cloud top / base heights to match observations
+              call cal_cldfra3 (cldfra(i, :, j), moist(i, :, j, p_qv), moist(i, :, j, p_qc), &
+                  moist(i, :, j, p_qi), moist(i, :, j, p_qs), dzs, p(i, :, j), ts(:),   &
+                  xland(i, j), gridkm, .true., 1.5, tropo_z, kts, kte, .false.,  &
+                  cldmask = cldmask(i, j), cldtopz = cldtopz_agl, cldbasez = cldbasez(i, j))
+
+          end select select_cld_impro
+
 !               do k = kts, kte - 1
 !                  moist(i,k,j,P_QV) = MAX(temp_Qv(k), moist(i,k,j,P_QV))
 !                  moist(i,k,j,P_QC) = temp_Qc(k) / temp_R(k)
