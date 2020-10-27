@@ -82,14 +82,15 @@
         ! t, p, ph_2, phb, alt, xland
       real, dimension (ims:ime, kms:kme, jms:jme, *), intent (inout) :: moist
       real, dimension (ims:ime, kms:kme, jms:jme), intent (in) :: t, p, ph_2, phb, alt
-      real, dimension (ims:ime, jms:jme), intent (in) :: xland, cldmask, cldtopz, cldbasez, brtemp, ht
+      real, dimension (ims:ime, jms:jme), intent (in) :: xland, cldbasez, brtemp, ht
+      real, dimension (ims:ime, jms:jme), intent (inout) :: cldmask, cldtopz
       logical, intent (in) :: hold_ups
       integer, intent (in) :: p_qv, p_qc, p_qi, p_qs, flag_cldmask, flag_cldtopz, flag_cldbasez, flag_brtemp, em_width, &
           ids, ide, jds, jde, ims, ime, jms, jme, kms, kme, its, ite, jts, jte, kts, kte
       real, intent (in) :: p00, dx, dy
       real, dimension (ims:ime, kms:kme, jms:jme), intent (out) :: cldfra
 
-      real, parameter :: CONVERT_M_TO_KM = 0.001, MISSING_CLDTOPZ = -999.9
+      real, parameter :: CONVERT_M_TO_KM = 0.001, MISSING_CLDTOPZ = -999.9, MISSING_CLDMASK = -999.9
       real, dimension (kts:kte - 1) :: dzs, ts
       real :: gridkm, tropoz, cldtopz_agl
       integer :: i, j, k, insert_clouds, k_tropo
@@ -99,10 +100,9 @@
         ! Identify the cloud initialization method
       insert_clouds = 0
       if (flag_cldmask == 1 .and. flag_cldtopz == 0 .and. flag_brtemp == 0) insert_clouds = 1
-      if (flag_cldmask == 1 .and. (flag_cldtopz == 1 .or. flag_brtemp == 1)) insert_clouds = 2
+      if ((flag_cldmask == 1 .and. flag_brtemp == 1) .or. flag_cldtopz == 1) insert_clouds = 2
       if (insert_clouds == 2 .and. flag_cldbasez == 1) insert_clouds = 3
       print *, 'insert_clouds = ', insert_clouds
-
 
       gridkm = sqrt (dx * dy) * CONVERT_M_TO_KM
 
@@ -127,9 +127,19 @@
           if (insert_clouds > 0) then
             cldtopz_agl = MISSING_CLDTOPZ
             if (flag_cldtopz == 1) then
+                ! cloud mask
+              if (cldtopz(i, j) > 0.0) then
+                cldmask(i, j) = 1.0
+              elseif (cldtopz(i, j) == 0.0) then 
+                cldmask(i, j) = 0.0
+              else
+                cldmask(i, j) = MISSING_CLDMASK
+              end if
+                ! cloud top height
               if (cldtopz(i, j) > 0.0) cldtopz_agl = max (0.0, cldtopz(i, j) -  ht(i, j))
             else
-              cldtopz_agl = Calc_cldtopz_from_brtemp (cldmask(i, j), ts, dzs, brtemp(i, j), tropoz, ht(i, j), kts, kte)
+                ! Only cloud top height needed
+              cldtopz(i, j) = Calc_cldtopz_from_brtemp (cldmask(i, j), ts, dzs, brtemp(i, j), tropoz, ht(i, j), kts, kte)
               if (cldtopz_agl > 0.0) cldtopz_agl = max (0.0, cldtopz(i, j) -  ht(i, j))
             end if
           end if
