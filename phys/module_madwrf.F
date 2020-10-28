@@ -102,7 +102,12 @@
       if (flag_cldmask == 1 .and. flag_cldtopz == 0 .and. flag_brtemp == 0) insert_clouds = 1
       if ((flag_cldmask == 1 .and. flag_brtemp == 1) .or. flag_cldtopz == 1) insert_clouds = 2
       if (insert_clouds == 2 .and. flag_cldbasez == 1) insert_clouds = 3
-      print *, 'insert_clouds = ', insert_clouds
+      if (LOCAL_DEBUG) then
+        print *, 'flag_cldmask = ', flag_cldmask
+        print *, 'flag_cldtopz = ', flag_cldtopz
+        print *, 'flag_brtemp = ', flag_brtemp
+        print *, 'insert_clouds = ', insert_clouds
+      end if
 
       gridkm = sqrt (dx * dy) * CONVERT_M_TO_KM
 
@@ -137,10 +142,10 @@
               end if
                 ! cloud top height
               if (cldtopz(i, j) > 0.0) cldtopz_agl = max (0.0, cldtopz(i, j) -  ht(i, j))
-            else
+            else if (flag_brtemp == 1) then
                 ! Only cloud top height needed
               cldtopz(i, j) = Calc_cldtopz_from_brtemp (cldmask(i, j), ts, dzs, brtemp(i, j), tropoz, ht(i, j), kts, kte)
-              if (cldtopz_agl > 0.0) cldtopz_agl = max (0.0, cldtopz(i, j) -  ht(i, j))
+              if (cldtopz(i, j) > 0.0) cldtopz_agl = max (0.0, cldtopz(i, j) -  ht(i, j))
             end if
           end if
 
@@ -850,6 +855,10 @@
           WRITE (dbg_msg,*) 'DEBUG-GT: FOUND TROPOPAUSE k=', k_tropo
           CALL wrf_debug (150, dbg_msg)
         endif
+
+        if (debugfl) then
+          print *, 'FOUND TROPOPAUSE k, height=', k_tropo, tropo_z
+        end if
 
       end subroutine Calc_tropo_height
 
