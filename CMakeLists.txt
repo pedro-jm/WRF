@@ -647,12 +647,12 @@ add_compile_definitions(
                         $<$<NOT:$<BOOL:${ENABLE_CTSM}>>:WRF_USE_CLM>
 
                         # If force classic or no nc-4 support enable classic
-                        $<$<OR:$<BOOL:${FORCE_NETCDF_CLASSIC}>,$<NOT:$<BOOL:${netCDF_NC4}>>>:NETCDF_classic=1>
+                        $<$<OR:$<BOOL:${FORCE_NETCDF_CLASSIC}>,$<NOT:$<BOOL:${netCDF_HAS_NC4}>>>:NETCDF_classic=1>
                         $<$<OR:$<BOOL:${WRFIO_NCD_NO_LARGE_FILE_SUPPORT}>,$<NOT:$<BOOL:${netCDF_LARGE_FILE_SUPPORT}>>>:WRFIO_NCD_NO_LARGE_FILE_SUPPORT=1>
                         # May need a check for WRFIO_ncdpar_LARGE_FILE_SUPPORT
 
                         # Now set the opposite in different defines, because why not :)
-                        $<$<AND:$<NOT:$<BOOL:${FORCE_NETCDF_CLASSIC}>>,$<BOOL:${netCDF_NC4}>>:USE_NETCDF4_FEATURES=1>
+                        $<$<AND:$<NOT:$<BOOL:${FORCE_NETCDF_CLASSIC}>>,$<BOOL:${netCDF_HAS_NC4}>>:USE_NETCDF4_FEATURES=1>
                         $<$<AND:$<NOT:$<BOOL:${WRFIO_NCD_NO_LARGE_FILE_SUPPORT}>>,$<BOOL:${netCDF_LARGE_FILE_SUPPORT}>>:WRFIO_NCD_LARGE_FILE_SUPPORT=1>
 
                         # Could simplify logic to just check if RPC is available but to be explicit
